@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TACTICAL_OS_V6_WARM_V2_PRO</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #020205;
+            --panel-bg: rgba(5, 5, 10, 0.98);
+            --accent-amber: #ffb000;
+            --accent-red: #ff2a2a;
+            --accent-green: #00ff41;
+            --text-main: #e0e6ed;
+            --border-dim: #1a1c22;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Share Tech Mono', monospace;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            background-image: 
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.4) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.04));
+            background-size: 100% 3px, 4px 100%;
+        }
+
+        /* Scanline Overlay */
+        body::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 0%, rgba(255, 255, 255, 0.03) 50%, rgba(18, 16, 16, 0) 100%);
+            background-size: 100% 15%;
+            z-index: 999;
+            pointer-events: none;
+            animation: scanline 10s linear infinite;
+        }
+
+        @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
+
+        /* --- Sidebar --- */
+        .header-container {
+            position: fixed;
+            top: 0; right: 0;
+            width: 340px; height: 100vh;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--accent-amber);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.8);
+        }
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem;
+            letter-spacing: 5px;
+            color: var(--accent-amber);
+            text-align: center;
+            padding: 20px 0;
+            text-shadow: 0 0 15px var(--accent-amber);
+            border-bottom: 1px solid var(--border-dim);
+        }
+
+        #mechModel { width: 100%; flex-grow: 1; }
+
+        /* --- Dashboard Grid --- */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 20px;
+            padding: 20px 360px 20px 20px;
+            width: 100%;
+        }
+
+        .card {
+            background: rgba(5, 5, 8, 0.9);
+            border: 1px solid var(--border-dim);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card h2 {
+            background: rgba(255, 176, 0, 0.05);
+            color: var(--accent-amber);
+            font-size: 0.75rem;
+            padding: 10px 15px;
+            letter-spacing: 3px;
+            border-bottom: 1px solid var(--border-dim);
+        }
+
+        /* --- Components --- */
+        .weather-minimal {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--accent-red);
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            background: rgba(255, 42, 42, 0.05);
+        }
+
+        .status-cluster { display: flex; align-items: center; gap: 8px; }
+        .status-bar { display: flex; gap: 4px; }
+        .led { width: 6px; height: 6px; background: #222; border-radius: 1px; }
+        .led.active { 
+            background: var(--accent-red); 
+            box-shadow: 0 0 8px var(--accent-red); 
+            animation: led-blink 0.8s infinite; 
+        }
+        @keyframes led-blink { 50% { opacity: 0.2; } }
+
+        #tempChartContainer {
+            height: 160px;
+            background: rgba(0,0,0,0.4);
+            padding: 5px;
+        }
+
+        /* News Lists */
+        ul { list-style: none; padding: 0; }
+        ul li { margin-bottom: 12px; font-size: 0.85rem; display: flex; align-items: flex-start; }
+        ul li::before { content: "»"; color: var(--accent-amber); margin-right: 10px; font-weight: bold; }
+        a { color: var(--text-main); text-decoration: none; transition: all 0.3s; }
+        a:hover { color: var(--accent-amber); text-shadow: 0 0 10px var(--accent-amber); transform: translateX(5px); }
+
+        /* Metrics */
+        .metrics-grid {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-grow: 1;
+            padding-bottom: 10px;
+        }
+        .metric-box { position: relative; width: 30%; height: 120px; }
+        .metric-label {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 10;
+        }
+        .metric-label span { display: block; font-family: 'Orbitron'; font-size: 0.9rem; color: var(--text-main); }
+        .metric-label small { font-size: 0.5rem; color: var(--accent-amber); letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <h1>MEHRDAD_FUCKS</h1>
+        <canvas id="mechModel"></canvas>
+    </div>
+
+    <div class="dashboard">
+        <div class="card">
+            <h2>[ REALTIME_OSCILLOSCOPE ]</h2>
+            <div style="padding:15px">
+                <div class="weather-minimal">
+                    <div>
+                        <span style="font-size:1.8rem; color:var(--accent-amber); font-weight:bold; font-family:'Orbitron';" id="currentTemp">--</span>
+                        <span style="font-size:0.8rem; color:var(--accent-red); opacity:0.8;">°C_DELTA</span>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="status-cluster">
+                            <div class="status-bar">
+                                <div class="led active"></div>
+                                <div class="led"></div>
+                                <div class="led active"></div>
+                            </div>
+                            <small style="color:var(--accent-red); font-size: 0.6rem; letter-spacing: 1px; font-weight: bold;">LIVE_FEED</small>
+                        </div>
+                        <div style="font-size: 0.55rem; opacity: 0.6; margin-top: 2px;" id="secZone">SEC_ZONE: MTL_01</div>
+                    </div>
+                </div>
+
+                <div id="tempChartContainer">
+                    <canvas id="tempChart"></canvas>
+                </div>
+                
+                <div id="weatherStatus" style="margin-top:10px; font-size:0.7rem; color:var(--accent-amber); border-left: 2px solid var(--accent-red); padding-left: 10px;">
+                    DATA_STREAM: SECURE // FORECAST: PENDING...
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>[ INTEL_UPLINK_WORLD ]</h2>
+            <div style="padding:15px"><ul id="worldNews"><li>CONNECTING...</li></ul></div>
+        </div>
+
+        <div class="card">
+            <h2>[ INTEL_UPLINK_AI ]</h2>
+            <div style="padding:15px"><ul id="aiNews"><li>CONNECTING...</li></ul></div>
+        </div>
+
+        <div class="card">
+            <h2>[ SYSTEM_CORE_METRICS ]</h2>
+            <div style="padding:15px; display:flex; flex-direction:column; height:100%;">
+                
+                <div class="weather-minimal" id="healthBadge" style="border-color: var(--accent-green); background: rgba(0, 255, 65, 0.05);">
+                    <div>
+                        <span style="font-size:0.8rem; color:var(--accent-green); font-weight:bold; font-family:'Orbitron';" id="healthStatus">BROWSER_OPTIMAL</span>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="status-cluster">
+                            <div class="status-bar">
+                                <div class="led active" id="healthLed" style="background:var(--accent-green); box-shadow: 0 0 8px var(--accent-green);"></div>
+                            </div>
+                            <small id="healthIcon" style="color:var(--accent-green); font-size: 0.6rem; letter-spacing: 1px; font-weight: bold;">[●] ONLINE</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metrics-grid">
+                    <div class="metric-box">
+                        <canvas id="batteryPie"></canvas>
+                        <div class="metric-label"><span id="batteryText">--</span><small>BATTERY</small></div>
+                    </div>
+                    <div class="metric-box">
+                        <canvas id="netPie"></canvas>
+                        <div class="metric-label"><span id="netText">--</span><small>NET_SPEED</small></div>
+                    </div>
+                    <div class="metric-box">
+                        <canvas id="fpsPie"></canvas>
+                        <div class="metric-label"><span id="fpsText">60</span><small>FRAME_RATE</small></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    /**
+     * THREE.JS RENDERER
+     */
+    function initThreeRenderer() {
+        const canvas = document.getElementById('mechModel');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true});
+        
+        const resize = () => {
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            camera.aspect = canvas.clientWidth / canvas.clientHeight;
+            camera.updateProjectionMatrix();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const allShapes = [];
+        const createCyberShape = (yPos, scale, color) => {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({color: color, wireframe: true, transparent: true, opacity: 0.7});
+            group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(scale * 1.3, 1), mat));
+            group.add(new THREE.Mesh(new THREE.TorusGeometry(scale * 1.6, 0.04, 16, 100), mat));
+            group.position.y = yPos;
+            scene.add(group);
+            allShapes.push(group);
+        };
+
+        createCyberShape(2.5, 1.8, 0xffb000); 
+        createCyberShape(-1.5, 1.5, 0xff3e3e); 
+        createCyberShape(-5.0, 1.0, 0xffb000); 
+
+        camera.position.z = 7.5;
+
+        const animate = () => {
+            requestAnimationFrame(animate);
+            allShapes.forEach((s, i) => {
+                s.rotation.y += 0.015;
+                s.rotation.x += 0.008 * i;
+            });
+            renderer.render(scene, camera);
+        }
+        animate();
+    }
+
+    /**
+     * SYSTEM METRICS & CHART.JS
+     * Battery, Net Speed, FPS
+     */
+    function initSystemMetrics() {
+        const pieOptions = (color) => ({
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: [color, 'rgba(255, 255, 255, 0.05)'],
+                    borderWidth: 0, hoverOffset: 0
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '80%',
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                animation: { animateRotate: true, duration: 1000, easing: 'easeOutQuart' }
+            }
+        });
+
+        const batteryPie = new Chart(document.getElementById('batteryPie'), pieOptions('#00ff41'));
+        const netPie = new Chart(document.getElementById('netPie'), pieOptions('#ffb000'));
+        const fpsPie = new Chart(document.getElementById('fpsPie'), pieOptions('#ff2a2a'));
+
+        // Variables
+        let batteryLevel = null, batteryCharging = false;
+        let fps = 60, lastFrameTime = performance.now(), frameCount = 0;
+
+        // Battery API
+        if (navigator.getBattery) {
+            navigator.getBattery().then(bat => {
+                batteryLevel = bat.level;
+                batteryCharging = bat.charging;
+                bat.addEventListener('levelchange', () => batteryLevel = bat.level);
+                bat.addEventListener('chargingchange', () => batteryCharging = bat.charging);
+            }).catch(e => console.warn('Battery API missing', e));
+        }
+
+        // FPS Counter
+        const measureFPS = () => {
+            frameCount++;
+            const now = performance.now();
+            if (now >= lastFrameTime + 1000) {
+                fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+            requestAnimationFrame(measureFPS);
+        };
+        measureFPS();
+
+        // UI Update Loop
+        setInterval(() => {
+            // 1. Battery
+            let batteryPercent = 0;
+            if (batteryLevel !== null) {
+                batteryPercent = Math.round(batteryLevel * 100);
+                document.getElementById('batteryText').innerText = batteryPercent + '%' + (batteryCharging ? '⚡' : '');
+            } else {
+                document.getElementById('batteryText').innerText = 'N/A';
+            }
+            batteryPie.data.datasets[0].data = [batteryPercent, 100 - batteryPercent];
+            batteryPie.update();
+
+            // 2. Net Speed (Downlink)
+            let netSpeed = 0;
+            if (navigator.connection) {
+                netSpeed = navigator.connection.downlink || 0;
+                document.getElementById('netText').innerText = netSpeed.toFixed(1) + 'Mb';
+            } else {
+                document.getElementById('netText').innerText = 'N/A';
+            }
+            const netPercent = Math.min(Math.round((netSpeed / 100) * 100), 100);
+            netPie.data.datasets[0].data = [netPercent, 100 - netPercent];
+            netPie.update();
+
+            // 3. FPS
+            const fpsPercent = Math.min(Math.round((fps / 60) * 100), 100);
+            document.getElementById('fpsText').innerText = fps;
+            fpsPie.data.datasets[0].data = [fpsPercent, 100 - fpsPercent];
+            fpsPie.update();
+
+            // Health Status Logic
+            const badge = document.getElementById('healthBadge');
+            const status = document.getElementById('healthStatus');
+            const led = document.getElementById('healthLed');
+            const icon = document.getElementById('healthIcon');
+            
+            const isCritical = (batteryLevel !== null && batteryPercent < 20 && !batteryCharging) || fps < 30 || netSpeed < 1;
+            
+            if (isCritical) {
+                badge.style.borderColor = 'var(--accent-red)';
+                badge.style.background = 'rgba(255, 42, 42, 0.1)';
+                status.innerText = 'BROWSER_CRITICAL';
+                status.style.color = 'var(--accent-red)';
+                led.style.background = 'var(--accent-red)';
+                led.style.boxShadow = '0 0 8px var(--accent-red)';
+                icon.style.color = 'var(--accent-red)';
+                icon.innerText = '[!] ALERT';
+            } else {
+                badge.style.borderColor = 'var(--accent-green)';
+                badge.style.background = 'rgba(0, 255, 65, 0.05)';
+                status.innerText = 'BROWSER_OPTIMAL';
+                status.style.color = 'var(--accent-green)';
+                led.style.background = 'var(--accent-green)';
+                led.style.boxShadow = '0 0 8px var(--accent-green)';
+                icon.style.color = 'var(--accent-green)';
+                icon.innerText = '[●] ONLINE';
+            }
+        }, 2000);
+    }
+
+    /**
+     * DATA MANAGER: WEATHER & NEWS
+     * Handles OpenMeteo, Reddit, HackerNews, and Google News proxy.
+     */
+    const DataManager = {
+        async fetchWeather(lat, lon) {
+            try {
+                const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`);
+                if (!r.ok) throw new Error('Weather fetch failed');
+                return await r.json();
+            } catch (e) { return null; }
+        },
+
+        async reverseGeocode(lat, lon) {
+            try {
+                const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+                if (!r.ok) return null;
+                const j = await r.json();
+                const p = j.address || {};
+                return p.city || p.town || p.village || p.municipality || p.state;
+            } catch (e) { return null; }
+        },
+
+        async fetchReddit(subreddit) {
+            try {
+                const r = await fetch(`https://www.reddit.com/r/${subreddit}/top.json?limit=5&t=day`);
+                const j = await r.json();
+                return j.data.children.map(post => ({
+                    title: post.data.title,
+                    url: post.data.url.startsWith('/r/') ? `https://www.reddit.com${post.data.url}` : post.data.url
+                }));
+            } catch (e) { return []; }
+        },
+
+        async fetchHackerNews(aiFilter = false) {
+            try {
+                const ids = await (await fetch('https://hacker-news.firebaseio.com/v0/topstories.json')).json();
+                const stories = [];
+                for (let i = 0; i < (aiFilter ? 50 : 10); i++) {
+                    const story = await (await fetch(`https://hacker-news.firebaseio.com/v0/item/${ids[i]}.json`)).json();
+                    if (story && story.url) {
+                        if (!aiFilter || (aiFilter && /ai|gpt|llm|intelligence/i.test(story.title))) {
+                            stories.push({ title: story.title, url: story.url });
+                        }
+                    }
+                    if (stories.length >= 5) break;
+                }
+                return stories;
+            } catch (e) { return []; }
+        },
+        
+        // Simple UI Helper
+        updateList(id, items) {
+            const ul = document.getElementById(id);
+            if (!items.length) { ul.innerHTML = '<li>NO_RESULTS</li>'; return; }
+            ul.innerHTML = items.slice(0, 5).map(i => `<li><a href="${i.url}" target="_blank">${i.title.toUpperCase()}</a></li>`).join('');
+        }
+    };
+
+    /**
+     * MAIN ORCHESTRATION
+     */
+    async function initLiveFeeds() {
+        // 1. Chart Init
+        let lastTemp = 0;
+        const ctx = document.getElementById('tempChart').getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 160);
+        gradient.addColorStop(0, 'rgba(255, 176, 0, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 176, 0, 0)');
+        
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: Array(25).fill(''), datasets: [{ data: Array(25).fill(0), borderColor: '#ffb000', borderWidth: 2, backgroundColor: gradient, fill: true, tension: 0.4, pointRadius: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, scales: { x: { display: false }, y: { display: false } }, plugins: { legend: { display: false } } }
+        });
+
+        // 2. Oscilloscope Animation
+        setInterval(() => {
+            const jitter = (Math.random() - 0.5) * 0.8;
+            const next = lastTemp + jitter;
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[0].data.push(next);
+            chart.update('none');
+            document.getElementById('currentTemp').innerText = next.toFixed(1);
+        }, 400);
+
+        // 3. Location & Weather
+        try {
+            const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout: 5000}));
+            const { latitude: lat, longitude: lon } = pos.coords;
+            
+            // Reverse Geocode
+            const city = await DataManager.reverseGeocode(lat, lon);
+            document.getElementById('secZone').innerText = `SEC_ZONE: ${city ? city.toUpperCase().slice(0,20) : 'UNKNOWN'}`;
+
+            // Weather Loop
+            const updateWeather = async () => {
+                const w = await DataManager.fetchWeather(lat, lon);
+                if (w && w.current_weather) {
+                    lastTemp = w.current_weather.temperature;
+                    document.getElementById('weatherStatus').innerText = `DATA_STREAM: OPEN-METEO // CODE:${w.current_weather.weathercode}`;
+                }
+            };
+            updateWeather();
+            setInterval(updateWeather, 60000);
+            
+        } catch (e) {
+            console.warn("Location denied or failed");
+            document.getElementById('secZone').innerText = 'SEC_ZONE: UNKNOWN_LOC';
+        }
+
+        // 4. News Loop
+        const updateNews = async () => {
+            // AI News: Try Reddit -> Fallback to HN
+            let aiNews = await DataManager.fetchReddit('artificial');
+            if (!aiNews.length) aiNews = await DataManager.fetchHackerNews(true);
+            DataManager.updateList('aiNews', aiNews);
+
+            // World News: Reddit
+            const worldNews = await DataManager.fetchReddit('worldnews');
+            DataManager.updateList('worldNews', worldNews);
+        };
+        updateNews();
+        setInterval(updateNews, 180000);
+    }
+
+    // Start Everything
+    initThreeRenderer();
+    initSystemMetrics();
+    initLiveFeeds();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TACTICAL_OS_V7_BATTERY_FIX</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+
+    <style>
+        /* --- CSS VARIABLES --- */
+        :root {
+            --bg-deep: #020205;
+            --bg-panel: rgba(5, 5, 10, 0.98);
+            --bg-card: rgba(5, 5, 8, 0.9);
+            
+            --c-amber: #ffb000;
+            --c-red: #ff2a2a;
+            --c-green: #00ff41;
+            --c-cyan: #00f0ff;
+            --c-text: #e0e6ed;
+            --c-dim: #888;
+            
+            --border: #1a1c22;
+            --font-mono: 'Share Tech Mono', monospace;
+            --font-display: 'Orbitron', sans-serif;
+        }
+
+        /* --- RESET & BASE --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-mono);
+            background: var(--bg-deep);
+            color: var(--c-text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            background-image: 
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.4) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.04));
+            background-size: 100% 3px, 4px 100%;
+        }
+
+        /* Scanline Overlay */
+        body::after {
+            content: " "; position: absolute; inset: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 0%, rgba(255, 255, 255, 0.03) 50%, rgba(18, 16, 16, 0) 100%);
+            background-size: 100% 15%;
+            z-index: 999; pointer-events: none;
+            animation: scanline 10s linear infinite;
+        }
+        @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
+
+        /* --- LAYOUT --- */
+        .sidebar {
+            position: fixed;
+            top: 0; right: 0; bottom: 0;
+            width: 340px;
+            background: var(--bg-panel);
+            border-left: 1px solid var(--c-amber);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.8);
+        }
+
+        .sidebar__header {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            letter-spacing: 5px;
+            color: var(--c-amber);
+            text-align: center;
+            padding: 20px 0;
+            text-shadow: 0 0 15px var(--c-amber);
+            border-bottom: 1px solid var(--border);
+        }
+
+        #mech-canvas { width: 100%; flex-grow: 1; }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 20px;
+            padding: 20px 360px 20px 20px;
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* --- CARD COMPONENT --- */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card__title {
+            background: rgba(255, 176, 0, 0.05);
+            color: var(--c-amber);
+            font-size: 0.75rem;
+            padding: 10px 15px;
+            letter-spacing: 3px;
+            border-bottom: 1px solid var(--border);
+            text-transform: uppercase;
+        }
+
+        .card__content {
+            padding: 15px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* --- WIDGETS --- */
+        /* Info/Status Bar */
+        .info-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--c-red);
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            background: rgba(255, 42, 42, 0.05);
+        }
+        .info-bar--green {
+            border-color: var(--c-green);
+            background: rgba(0, 255, 65, 0.05);
+        }
+
+        /* LED Indicators */
+        .led-group { display: flex; gap: 4px; }
+        .led { width: 6px; height: 6px; background: #222; border-radius: 1px; }
+        .led.active { background: var(--c-red); box-shadow: 0 0 8px var(--c-red); animation: blink 0.8s infinite; }
+        .led.active-green { background: var(--c-green); box-shadow: 0 0 8px var(--c-green); }
+        @keyframes blink { 50% { opacity: 0.2; } }
+
+        /* Tables */
+        .sys-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .sys-table td { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .label { color: var(--c-dim); text-transform: uppercase; letter-spacing: 1px; }
+        .val { text-align: right; color: var(--c-cyan); font-weight: bold; font-family: var(--font-display); }
+        .val--plain { color: var(--c-text); font-family: var(--font-mono); font-size: 1.1rem; }
+
+        /* Metrics */
+        .metrics-row { display: flex; justify-content: space-around; align-items: center; flex-grow: 1; }
+        .metric-wrap { position: relative; width: 30%; height: 120px; }
+        .metric-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        .metric-val { display: block; font-family: var(--font-display); font-size: 0.9rem; color: var(--c-text); }
+        .metric-lbl { font-size: 0.5rem; color: var(--c-amber); letter-spacing: 1px; }
+
+        /* Charts */
+        .chart-box { height: 160px; background: rgba(0,0,0,0.4); padding: 5px; }
+
+        /* Text Utils */
+        .t-lg { font-size: 1.8rem; font-weight: bold; font-family: var(--font-display); color: var(--c-amber); }
+        .t-sm { font-size: 0.8rem; opacity: 0.8; color: var(--c-red); }
+        .t-xs { font-size: 0.6rem; letter-spacing: 1px; font-weight: bold; }
+        .t-dim { color: var(--c-dim); }
+        .t-cyan { color: var(--c-cyan); }
+        .t-green { color: var(--c-green); }
+        
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <h1 class="sidebar__header">SYSTEM_STATUS_69</h1>
+        <canvas id="mech-canvas"></canvas>
+    </aside>
+
+    <main class="dashboard-grid">
+        
+        <section class="card">
+            <h2 class="card__title">[ REALTIME_OSCILLOSCOPE ]</h2>
+            <div class="card__content">
+                <div class="info-bar">
+                    <div>
+                        <div class="t-lg" id="currentTemp">--</div>
+                        <div class="t-sm">SIM_SIGNAL</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <div class="led-group">
+                                <div class="led active"></div><div class="led"></div><div class="led active"></div>
+                            </div>
+                            <small class="t-xs" style="color:var(--c-red)">LIVE_FEED</small>
+                        </div>
+                        <div style="font-size:0.55rem; opacity:0.6; margin-top:2px;" id="uptimeCounter">UPTIME: 00:00:00</div>
+                    </div>
+                </div>
+
+                <div class="chart-box">
+                    <canvas id="tempChart"></canvas>
+                </div>
+                
+                <div style="margin-top:10px; font-size:0.7rem; color:var(--c-amber); border-left: 2px solid var(--c-red); padding-left: 10px;">
+                    OSCILLATOR: STABLE // FREQ: 60HZ
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2 class="card__title">[ HARDWARE_IDENTITY_SCAN ]</h2>
+            <div class="card__content">
+                <table class="sys-table">
+                    <tr><td class="label">CPU CORES</td><td class="val" id="hw-cpu">--</td></tr>
+                    <tr><td class="label">LOGICAL MEM (RAM)</td><td class="val" id="hw-ram">--</td></tr>
+                    <tr><td class="label">DISPLAY RES</td><td class="val" id="hw-res">--</td></tr>
+                    <tr><td class="label">PIXEL RATIO</td><td class="val" id="hw-pixel">--</td></tr>
+                    <tr><td class="label">ORIENTATION</td><td class="val" id="hw-orient">--</td></tr>
+                </table>
+
+                <div style="margin-top:10px;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-bottom:4px;">
+                        <span class="t-dim">STORAGE_ESTIMATE</span>
+                        <span class="t-cyan" id="storage-text">CALCULATING...</span>
+                    </div>
+                    <div style="width:100%; height:4px; background:#222; margin-top:4px;">
+                        <div id="storage-bar" style="height:100%; background:var(--c-cyan); width:0%; transition:width 0.5s;"></div>
+                    </div>
+                </div>
+                
+                <div style="font-size:0.6rem; color:#555; margin-top:auto; padding-top:10px;">
+                    ID: <span id="userAgentHash">CALCULATING_HASH...</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2 class="card__title">[ NET_PERF_TELEMETRY ]</h2>
+            <div class="card__content">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:15px;">
+                    <div style="background:rgba(255,255,255,0.03); padding:8px; border-left:2px solid var(--c-green);">
+                        <div class="t-xs t-dim">CONN_TYPE</div>
+                        <div class="val--plain" id="net-type">--</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03); padding:8px; border-left:2px solid var(--c-green);">
+                        <div class="t-xs t-dim">LATENCY (RTT)</div>
+                        <div class="val--plain" id="net-rtt">--</div>
+                    </div>
+                </div>
+
+                <table class="sys-table">
+                    <tr><td class="label">DOWNLINK_EST</td><td class="val" id="net-down">--</td></tr>
+                    <tr><td class="label">PAGE_LOAD_LATENCY</td><td class="val" id="perf-load">--</td></tr>
+                    <tr><td class="label">JS_HEAP_USED</td><td class="val" id="perf-heap">--</td></tr>
+                    <tr><td class="label">JS_HEAP_LIMIT</td><td class="val" id="perf-limit">--</td></tr>
+                </table>
+                
+                <div style="margin-top:auto; font-size:0.65rem; color:var(--c-green);">
+                    > DIAGNOSTIC_DAEMON: ACTIVE
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2 class="card__title">[ SYSTEM_CORE_METRICS ]</h2>
+            <div class="card__content">
+                <div class="info-bar info-bar--green" id="healthBadge">
+                    <div>
+                        <span class="t-green" style="font-weight:bold; font-family:var(--font-display);" id="healthStatus">SYSTEM_OPTIMAL</span>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <div class="led-group">
+                                <div class="led active-green" id="healthLed"></div>
+                            </div>
+                            <small class="t-xs t-green">[●] ONLINE</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metrics-row">
+                    <div class="metric-wrap">
+                        <canvas id="batteryPie"></canvas>
+                        <div class="metric-center">
+                            <span class="metric-val" id="batteryText">--</span>
+                            <small class="metric-lbl">BATTERY</small>
+                        </div>
+                    </div>
+                    <div class="metric-wrap">
+                        <canvas id="netPie"></canvas>
+                        <div class="metric-center">
+                            <span class="metric-val" id="netText">--</span>
+                            <small class="metric-lbl">NET_LOAD</small>
+                        </div>
+                    </div>
+                    <div class="metric-wrap">
+                        <canvas id="fpsPie"></canvas>
+                        <div class="metric-center">
+                            <span class="metric-val" id="fpsText">60</span>
+                            <small class="metric-lbl">FPS</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            /* --- 3D ENGINE --- */
+            const initThreeJS = () => {
+                const canvas = document.getElementById('mech-canvas');
+                if (!canvas) return;
+
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+                const renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true});
+
+                const resize = () => {
+                    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+                    camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                    camera.updateProjectionMatrix();
+                };
+                window.addEventListener('resize', resize);
+                resize();
+
+                const shapes = [];
+                const addShape = (y, s, c) => {
+                    const g = new THREE.Group();
+                    const m = new THREE.MeshBasicMaterial({color:c, wireframe:true, transparent:true, opacity:0.6});
+                    g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(s*1.3,0), m));
+                    g.add(new THREE.Mesh(new THREE.TorusGeometry(s*1.6, 0.04, 8, 50), m));
+                    g.position.y = y;
+                    scene.add(g);
+                    shapes.push(g);
+                };
+                addShape(2.5, 1.8, 0xffb000);
+                addShape(-1.5, 1.5, 0xff3e3e);
+                addShape(-5.0, 1.0, 0xffb000);
+                camera.position.z = 7.5;
+
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    shapes.forEach((s,i) => { s.rotation.y += 0.01; s.rotation.x += 0.005*i; });
+                    renderer.render(scene, camera);
+                };
+                animate();
+            };
+
+            /* --- DIAGNOSTIC DATA --- */
+            const initData = async () => {
+                // Hardware
+                document.getElementById('hw-cpu').innerText = `${navigator.hardwareConcurrency || '8'} THREADS`;
+                document.getElementById('hw-ram').innerText = navigator.deviceMemory ? `~${navigator.deviceMemory} GB` : '8 GB';
+                
+                const updateRes = () => {
+                    document.getElementById('hw-res').innerText = `${window.screen.width}x${window.screen.height}`;
+                    document.getElementById('hw-pixel').innerText = `${window.devicePixelRatio.toFixed(1)}x`;
+                    const o = (screen.orientation || {}).type || 'unknown';
+                    document.getElementById('hw-orient').innerText = o.replace('portrait-', 'P_').replace('landscape-', 'L_').toUpperCase();
+                };
+                window.addEventListener('resize', updateRes);
+                updateRes();
+
+                // Storage
+                if (navigator.storage && navigator.storage.estimate) {
+                    try {
+                        const est = await navigator.storage.estimate();
+                        const used = (est.usage / 1e9).toFixed(2);
+                        const quota = (est.quota / 1e9).toFixed(0);
+                        document.getElementById('storage-text').innerText = `${used} / ${quota} GB`;
+                        document.getElementById('storage-bar').style.width = `${Math.round((est.usage/est.quota)*100)}%`;
+                    } catch { document.getElementById('storage-text').innerText = 'SECURE_MODE'; }
+                }
+
+                // ID Hash
+                const raw = navigator.userAgent + (navigator.hardwareConcurrency || 1);
+                let hash = 0;
+                for (let i = 0; i < raw.length; i++) hash = Math.imul(31, hash) + raw.charCodeAt(i) | 0;
+                document.getElementById('userAgentHash').innerText = `DEV_ID_${Math.abs(hash).toString(16).toUpperCase()}`;
+
+                // Perf Loop
+                const updatePerf = () => {
+                    const nav = performance.getEntriesByType("navigation")[0];
+                    if (nav) document.getElementById('perf-load').innerText = `${Math.round(nav.loadEventEnd)}ms`;
+
+                    if (performance.memory) {
+                        document.getElementById('perf-heap').innerText = `${Math.round(performance.memory.usedJSHeapSize/1e6)} MB`;
+                        document.getElementById('perf-limit').innerText = `${Math.round(performance.memory.jsHeapSizeLimit/1e6)} MB`;
+                    }
+
+                    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                    if (conn) {
+                        document.getElementById('net-type').innerText = (conn.effectiveType || '4g').toUpperCase();
+                        document.getElementById('net-rtt').innerText = `${conn.rtt || 0}ms`;
+                        document.getElementById('net-down').innerText = `${conn.downlink || 0} Mbps`;
+                    }
+                };
+                setInterval(updatePerf, 2000);
+                updatePerf();
+            };
+
+            /* --- SYSTEM METRICS (Battery Fix Included) --- */
+            const initMetrics = async () => {
+                const config = (c) => ({
+                    type: 'doughnut', 
+                    data: { datasets: [{ data: [0, 100], backgroundColor: [c, 'rgba(255,255,255,0.05)'], borderWidth: 0 }] },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, cutout: '80%', 
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } }, 
+                        animation: { duration: 0 } 
+                    }
+                });
+
+                const bPie = new Chart(document.getElementById('batteryPie'), config('#00ff41'));
+                const nPie = new Chart(document.getElementById('netPie'), config('#ffb000'));
+                const fPie = new Chart(document.getElementById('fpsPie'), config('#ff2a2a'));
+
+                // FPS
+                let fps = 60, frames = 0, last = performance.now();
+                const countFps = () => {
+                    frames++;
+                    const now = performance.now();
+                    if (now >= last + 1000) { fps = frames; frames = 0; last = now; }
+                    requestAnimationFrame(countFps);
+                };
+                countFps();
+
+                // Battery API (The Fix)
+                let battery = null;
+                if (navigator.getBattery) {
+                    try { battery = await navigator.getBattery(); } catch(e) { console.log('Battery API blocked'); }
+                }
+
+                setInterval(() => {
+                    // Update FPS
+                    document.getElementById('fpsText').innerText = fps;
+                    fPie.data.datasets[0].data = [(fps/60)*100, Math.max(0, 100-(fps/60)*100)];
+                    fPie.update('none');
+
+                    // Update Net (Simulated visualizer)
+                    const netVal = Math.random() * 20 + 10;
+                    document.getElementById('netText').innerText = Math.round(netVal) + 'Mb';
+                    nPie.data.datasets[0].data = [netVal, 100-netVal];
+                    nPie.update('none');
+
+                    // Update Battery
+                    if (battery) {
+                        const lvl = Math.round(battery.level * 100);
+                        const txt = battery.charging ? `${lvl}%+` : `${lvl}%`;
+                        document.getElementById('batteryText').innerText = txt;
+                        
+                        bPie.data.datasets[0].data = [lvl, 100 - lvl];
+                        // Critical Alert Red
+                        bPie.data.datasets[0].backgroundColor[0] = (lvl < 20 && !battery.charging) ? '#ff2a2a' : '#00ff41';
+                        bPie.update('none');
+                    } else {
+                        document.getElementById('batteryText').innerText = 'N/A';
+                    }
+                }, 1000);
+            };
+
+            /* --- OSCILLOSCOPE --- */
+            const initOscilloscope = () => {
+                const ctx = document.getElementById('tempChart').getContext('2d');
+                const chart = new Chart(ctx, {
+                    type: 'line',
+                    data: { 
+                        labels: Array(25).fill(''), 
+                        datasets: [{ 
+                            data: Array(25).fill(50), 
+                            borderColor: '#ffb000', 
+                            borderWidth: 2, 
+                            backgroundColor: 'rgba(255,176,0,0.1)', 
+                            fill: true, 
+                            tension: 0.4, 
+                            pointRadius: 0 
+                        }] 
+                    },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
+                        scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+
+                // Update Chart
+                setInterval(() => {
+                    const d = chart.data.datasets[0].data;
+                    d.shift();
+                    // Generate Sine Wave + Noise
+                    const val = 50 + Math.sin(Date.now() / 200) * 20 + (Math.random() * 5);
+                    d.push(val);
+                    chart.update('none');
+                    document.getElementById('currentTemp').innerText = val.toFixed(1);
+                }, 100);
+
+                // Uptime Counter
+                const start = Date.now();
+                setInterval(() => {
+                    const diff = Date.now() - start;
+                    const h = Math.floor(diff/36e5).toString().padStart(2,'0');
+                    const m = Math.floor((diff%36e5)/6e4).toString().padStart(2,'0');
+                    const s = Math.floor((diff%6e4)/1e3).toString().padStart(2,'0');
+                    document.getElementById('uptimeCounter').innerText = `UPTIME: ${h}:${m}:${s}`;
+                }, 1000);
+            };
+
+            // Init
+            initThreeJS();
+            initData();
+            initMetrics();
+            initOscilloscope();
+        });
+    </script>
+</body>
+</html>
